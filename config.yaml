@@ -1,0 +1,50 @@
+# =============================================================================
+# config.yaml - all problem data for the MILP trajectory optimiser
+# Ref: Richards (2002) MSc thesis, Sec 2.3 / Richards et al. JGCD 25(4) 2002
+#
+# TODO:
+#   [ ] Fill in the general settings (dynamics, horizon, limits, big-M, solver)
+#   [ ] Define vehicle 1 start/end states (single-vehicle mode uses only this one)
+#   [ ] Add extra vehicles for multi-vehicle mode
+#   [ ] Define the obstacle boxes for one_obstacle and multi_obstacle
+#   [ ] Make sure start/end points lie outside every (inflated) obstacle
+#   [ ] Pick big-M just above the largest coordinate difference (not 1e6)
+#   [ ] Later: set vehicle_avoidance.safety_distance and plume.length/half_width
+# =============================================================================
+
+general:
+  dynamics: double_integrator     # double_integrator | hill
+  dims: 2                         # N = 2 or 3
+  T: null                         # number of time steps
+  dt: null                        # time-step length [s]
+  omega: null                     # orbital rate [rad/s] (hill only)
+  mass: null                      # [kg]
+  u_max: null                     # thrust limit per axis [N]
+  x_max: null                     # state limit per component
+  big_M: null
+  obstacle_margin: 0.0            # inflation to limit between-step corner cutting
+  solver:
+    time_limit: null              # [s]
+    mip_gap: null
+
+vehicles:                         # state = [positions..., velocities...]
+  - name: v1
+    start: []
+    end: []
+
+vehicle_avoidance:                # used only when multi_vehicle is true
+  safety_distance: []             # r_n per axis
+
+plume:                            # used only when plumes is true
+  length: null                    # P
+  half_width: null                # W
+
+scenarios:                        # each obstacle: {lower: [...], upper: [...]}
+  no_obstacle: []
+  one_obstacle: []
+  multi_obstacle: []
+
+toggles:                          # defaults, overridable from the command line
+  scenario: no_obstacle           # no_obstacle | one_obstacle | multi_obstacle
+  multi_vehicle: false
+  plumes: false                   # ignored (with warning) if multi_vehicle is false
