@@ -5,3 +5,4 @@ results/
 *.lp
 *.sol
 .venv/
+.vscode/settings.json
