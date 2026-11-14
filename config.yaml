@@ -15,11 +15,11 @@
 general:
   dynamics: double_integrator     # double_integrator | hill
   dims: 2                         # N = 2 or 3
-  T: null                         # number of time steps
-  dt: null                        # time-step length [s]
+  T: 10                         # number of time steps
+  dt: 1                        # time-step length [s]
   omega: null                     # orbital rate [rad/s] (hill only)
-  mass: null                      # [kg]
-  u_max: null                     # thrust limit per axis [N]
+  mass: 5                      # [kg]
+  u_max: 1e-3                     # thrust limit per axis [N]
   x_max: null                     # state limit per component
   big_M: null
   obstacle_margin: 0.0            # inflation to limit between-step corner cutting
