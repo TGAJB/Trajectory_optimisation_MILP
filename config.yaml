@@ -29,8 +29,8 @@ general:
 
 vehicles:                         # state = [positions..., velocities...]
   - name: v1
-    start: []
-    end: []
+    start: [0,0,0,0] #[x,y,vx,vy]
+    end: [10,0,0,0] 
 
 vehicle_avoidance:                # used only when multi_vehicle is true
   safety_distance: []             # r_n per axis
@@ -41,7 +41,8 @@ plume:                            # used only when plumes is true
 
 scenarios:                        # each obstacle: {lower: [...], upper: [...]}
   no_obstacle: []
-  one_obstacle: []
+  one_obstacle: 
+  - {lower: [2,-1], upper: [4,1]} # '-' starts a list item and we write bottom left and top right corner
   multi_obstacle: []
 
 toggles:                          # defaults, overridable from the command line
