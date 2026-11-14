@@ -9,7 +9,8 @@ TODO - base LP:
     [ ] Boundary conditions: x[0] = start, x[T] = end
     [ ] Bounds: |x| <= x_max, u_plus/u_minus <= u_max
     [ ] Objective: minimise sum(u_plus + u_minus)  (fuel / 1-norm)
-
+#THIS TODO IS PG 26 IN ARTICLE
+    
 TODO - obstacles (Sec 2.3.1):
     [ ] outside_box(model, point, lower, upper, M): reusable big-M helper
         - 2N binaries a_k
