@@ -12,12 +12,12 @@ TODO - base LP:
 #THIS TODO IS PG 26 IN ARTICLE
     
 TODO - obstacles (Sec 2.3.1):
-    [ ] outside_box(model, point, lower, upper, M): reusable big-M helper
+    [x] outside_box(model, point, lower, upper, M): reusable big-M helper
         - 2N binaries a_k
         - point_n >= upper_n - M a_n
         - point_n <= lower_n + M a_(n+N)
         - sum(a) <= 2N - 1
-    [ ] add_obstacles(...): call outside_box for every vehicle, obstacle (inflated
+    [x] add_obstacles(...): call outside_box for every vehicle, obstacle (inflated
         by obstacle_margin), and time step i = 1..T-1
 
 TODO - later (stop with NotImplementedError until done):
@@ -103,10 +103,65 @@ def add_base_lp(model, cfg, Ad, Bd):
     return x, u_plus, u_minus
 
 
-# Avoidance constraints (Sec 2.3) - placeholders until each step is built
+# Avoidance constraints (Sec 2.3)
+
+def outside_box(model, point, lower, upper, M, name):
+    """
+    Force `point` to lie outside the box [lower, upper] (Richards eq. 12), using big-M.
+
+    point  list of N Gurobi variables/expressions, one per axis
+           (later, for vehicle avoidance, this will be x_p - x_q)
+    lower  N numbers, the box corner with the smallest coordinates
+    upper  N numbers, the box corner with the largest coordinates
+
+    "Outside" means at least one of these 2N conditions holds:
+        point_n >= upper_n        (beyond the box on the positive side of axis n)
+        point_n <= lower_n        (beyond the box on the negative side of axis n)
+
+    Each condition gets a binary a. a = 0 enforces the condition; a = 1 switches it
+    off by moving the bound M away. At most 2N-1 may be switched off, so at least
+    one condition is enforced.
+
+    Returns the list of 2N binaries.
+    """
+    N = len(point)
+    a = model.addVars(2 * N, vtype=GRB.BINARY, name=name)
+
+    for n in range(N):
+        model.addConstr(point[n] >= upper[n] - M * a[n], name=f"{name}_above[{n}]")
+        model.addConstr(point[n] <= lower[n] + M * a[n + N], name=f"{name}_below[{n}]")
+
+    model.addConstr(a.sum() <= 2 * N - 1, name=f"{name}_one_side")
+
+    return a
+
 
 def add_obstacles(model, cfg, x):
-    raise NotImplementedError("Obstacle avoidance is not built yet (step 6)")
+    """
+    Keep every vehicle outside every obstacle at every time step (Richards Sec 2.3.1).
+
+    Obstacles are grown by obstacle_margin on every side, to reduce corner cutting
+    between time steps (the constraints only hold AT the time steps).
+    Only steps 1..T-1 are constrained: step 0 and step T are fixed by the start and end
+    conditions, and config.py already checks those lie outside every obstacle.
+    """
+    general = cfg["general"]
+    V = len(cfg["vehicles"])
+    T = general["T"]
+    dims = general["dims"]
+    M = general["big_M"]
+    margin = general.get("obstacle_margin", 0.0)
+
+    for l, obstacle in enumerate(cfg["obstacles"]):
+        # Inflated box
+        lower = [obstacle["lower"][n] - margin for n in range(dims)]
+        upper = [obstacle["upper"][n] + margin for n in range(dims)]
+
+        for p in range(V):
+            for i in range(1, T):
+                # Position of vehicle p at step i = the first `dims` state components
+                position = [x[p, i, n] for n in range(dims)]
+                outside_box(model, position, lower, upper, M, name=f"obs[{p},{l},{i}]")
 
 
 def add_vehicle_avoidance(model, cfg, x):
