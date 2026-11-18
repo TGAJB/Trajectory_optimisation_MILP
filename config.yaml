@@ -15,13 +15,13 @@
 general:
   dynamics: double_integrator     # double_integrator | hill
   dims: 2                         # N = 2 or 3
-  T: 10                         # number of time steps
-  dt: 1                        # time-step length [s]
+  T: 20                           # number of time steps
+  dt: 30.0                        # time-step length [s] -> 600 s total (10 s was too short to cover 10 m)
   omega: null                     # orbital rate [rad/s] (hill only)
-  mass: 5                      # [kg]
-  u_max: 1e-3                     # thrust limit per axis [N]
-  x_max: null                     # state limit per component
-  big_M: null
+  mass: 5                         # [kg]
+  u_max: 1.0e-3                   # thrust limit per axis [N] (write 1.0e-3, not 1e-3: YAML reads that as text)
+  x_max: [20, 20, 0.1, 0.1]       # state limits [x, y, vx, vy]; peak speed here is about 0.02 m/s
+  big_M: 50                       # > largest position difference (positions within +-20 -> 40)
   obstacle_margin: 0.0            # inflation to limit between-step corner cutting
   solver:
     time_limit: null              # [s]
