@@ -26,14 +26,12 @@ TODO - later (stop with NotImplementedError until done):
         (u_plus <= M c for forward thrusters, u_minus <= M c for reverse), 2N+1 binaries
 
 TODO - solve:
-    [ ] build_and_solve(cfg, Ad, Bd): base LP -> obstacles -> (vehicles) -> (plumes)
-    [ ] Apply Gurobi params (TimeLimit, MIPGap)
-    [ ] Handle infeasible / time-limit status
-    [ ] Return trajectories, thrusts, fuel used, solve time, MIP gap, binary count
-    [ ] Print the binary count on every run
+    [x] build_and_solve(cfg, Ad, Bd): base LP -> obstacles -> (vehicles) -> (plumes)
+    [x] Apply Gurobi params (TimeLimit, MIPGap)
+    [x] Handle infeasible / time-limit status
+    [x] Return trajectories, thrusts, fuel used, solve time, MIP gap, binary count
+    [x] Print the binary count on every run
 """
-
-import time
 
 import numpy as np
 import gurobipy as gp
@@ -103,4 +101,119 @@ def add_base_lp(model, cfg, Ad, Bd):
     model.setObjective(u_plus.sum() + u_minus.sum(), GRB.MINIMIZE)
 
     return x, u_plus, u_minus
+
+
+# Avoidance constraints (Sec 2.3) - placeholders until each step is built
+
+def add_obstacles(model, cfg, x):
+    raise NotImplementedError("Obstacle avoidance is not built yet (step 6)")
+
+
+def add_vehicle_avoidance(model, cfg, x):
+    raise NotImplementedError("Vehicle avoidance is not built yet (multi_vehicle)")
+
+
+def add_plumes(model, cfg, x, u_plus, u_minus):
+    raise NotImplementedError("Plume avoidance is not built yet (plumes)")
+
+
+#SOLVER
+
+# Readable names for the Gurobi status codes we expect to see
+STATUS_NAMES = {
+    GRB.OPTIMAL: "optimal",
+    GRB.TIME_LIMIT: "time limit reached",
+    GRB.INFEASIBLE: "infeasible",
+    GRB.INF_OR_UNBD: "infeasible or unbounded",
+    GRB.UNBOUNDED: "unbounded",
+}
+
+
+def build_and_solve(cfg, Ad, Bd):
+    """
+    Build the MILP -> returns a solved dictionary
+        X           states,  shape (V, T+1, 2*dims)
+        U           thrusts, shape (V, T, dims)       (u_plus - u_minus)
+        fuel        objective value, sum of |u| over all vehicles/steps/axes  [N]
+        delta_v     total delta-v over all vehicles = fuel * dt / mass        [m/s]
+        status      readable Gurobi status, e.g. "optimal"
+        runtime     solve time [s]
+        mip_gap     relative gap between best solution and best bound (0 for a pure LP)
+        n_binaries  number of binary variables in the model
+    """
+    general = cfg["general"]
+    solver = general.get("solver", {})
+
+    model = gp.Model("trajectory")
+
+    # Solver settings: leave Gurobi's default when the config value is null
+    if solver.get("time_limit") is not None:
+        model.Params.TimeLimit = solver["time_limit"]
+    if solver.get("mip_gap") is not None:
+        model.Params.MIPGap = solver["mip_gap"]
+
+    #base LP first, then the avoidance constraints that are switched on
+    x, u_plus, u_minus = add_base_lp(model, cfg, Ad, Bd)
+
+    if len(cfg["obstacles"]) > 0:
+        add_obstacles(model, cfg, x)
+    if cfg["vehicle_avoidance"]:
+        add_vehicle_avoidance(model, cfg, x)
+    if cfg["plumes"]:
+        add_plumes(model, cfg, x, u_plus, u_minus)
+
+    # Gurobi only counts the variables after an update
+    model.update()
+    print(f"Binary variables: {model.NumBinVars}")
+
+    model.optimize()
+
+    status = STATUS_NAMES.get(model.Status, f"Gurobi status code {model.Status}")
+
+    # No solution at all (infeasible, or time limit hit before any solution was found)
+    if model.SolCount == 0:
+        raise RuntimeError(f"No solution found: {status}")
+
+    # A solution exists but may not be optimal
+    if model.Status == GRB.TIME_LIMIT:
+        print(f"Time limit reached: returning best solution found, "
+              f"within {100 * model.MIPGap:.2f}% of optimal")
+
+    # Copy the solution into NumPy arrays
+    V = len(cfg["vehicles"])
+    T = general["T"]
+    dims = general["dims"]
+    n_states = 2 * dims
+
+    X = np.zeros((V, T + 1, n_states))
+    for p in range(V):
+        for i in range(T + 1):
+            for k in range(n_states):
+                X[p, i, k] = x[p, i, k].X
+
+    U = np.zeros((V, T, dims))
+    for p in range(V):
+        for i in range(T):
+            for n in range(dims):
+                U[p, i, n] = u_plus[p, i, n].X - u_minus[p, i, n].X
+
+    # The MIP gap only exists once there are binaries (a pure LP has none)
+    if model.IsMIP:
+        mip_gap = model.MIPGap
+    else:
+        mip_gap = 0.0
+
+    fuel = model.ObjVal
+    delta_v = fuel * general["dt"] / general["mass"]
+
+    return {
+        "X": X,
+        "U": U,
+        "fuel": fuel,
+        "delta_v": delta_v,
+        "status": status,
+        "runtime": model.Runtime,
+        "mip_gap": mip_gap,
+        "n_binaries": model.NumBinVars,
+    }
 
