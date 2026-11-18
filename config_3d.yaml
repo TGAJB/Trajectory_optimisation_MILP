@@ -1,0 +1,82 @@
+# =============================================================================
+# config_3d.yaml - 3-D spacecraft case: Hill's / Clohessy-Wiltshire dynamics
+# Ref: Richards (2002) MSc thesis, eq. 2.4 and Sec 2.3
+#
+# Run with:  python main.py <scenario> --config config_3d.yaml
+#
+# Axes (Hill's frame): x radial (away from Earth), y in-track (along the orbit),
+#                      z out-of-plane.
+# The vehicle moves 10 m in-track (along y): the gentlest direction in Hill's
+# equations, because a vehicle at rest anywhere on the y axis stays there.
+# =============================================================================
+
+general:
+  dynamics: hill
+  dims: 3
+  T: 40                                 # number of time steps
+  dt: 15.0                              # time-step length [s] -> 600 s total
+  omega: 1.16e-3                        # orbital rate [rad/s]: 90-min orbit, 2*pi/5400 (keep the dot and the sign)
+  mass: 5                               # [kg]
+  u_max: 1.0e-3                         # thrust limit per axis [N]
+  x_max: [20, 20, 20, 0.1, 0.1, 0.1]    # state limits [x, y, z, vx, vy, vz]
+  big_M: 50                             # > largest position difference (positions within +-20 -> 40)
+  obstacle_margin: 0.15                 # inflation to limit between-step corner cutting (0.1 let the gate slalom clip a wall)
+  solver:
+    time_limit: null                    # [s]
+    mip_gap: null
+
+vehicles:                               # state = [x, y, z, vx, vy, vz]
+  - name: v1
+    start: [0, 0, 0, 0, 0, 0]
+    end:   [0, 10, 0, 0, 0, 0]
+
+vehicle_avoidance:                      # used only when multi_vehicle is true
+  safety_distance: []                   # r_n per axis
+
+plume:                                  # used only when plumes is true
+  length: null                          # P
+  half_width: null                      # W
+
+# Note: without obstacles the fuel-optimal in-track move is NOT a straight line. It dips
+# radially to x = -1.5 m (dropping slightly into a lower, faster orbit), so the boxes
+# below are centred on x = -1.5 to sit on that natural path.
+scenarios:                              # each obstacle: {lower: [x, y, z], upper: [x, y, z]}
+  no_obstacle: []
+
+  one_obstacle:
+  - {lower: [-2.5, 4, -1], upper: [-0.5, 6, 1]}           # cube sitting on the natural path
+
+  # Gate slalom: three 1 m thick walls (x -5..4, z -4..4), each with a 1 m x 1 m window.
+  # The windows are offset in different directions, so the vehicle has to weave
+  # radially (x) and out-of-plane (z) while moving along the orbit, partly against its
+  # natural inward dip. Each wall = 4 boxes around the window (left, right, below, above).
+  # Walls are 1 m thick on purpose: thinner walls let the vehicle jump through a wall
+  # between two time steps instead of using the window.
+  multi_obstacle:
+  # Gate 1 (y 1.5..2.5): window radially OUT and UP,     x 0..1,       z 0.5..1.5
+  - {lower: [-5, 1.5, -4], upper: [0, 2.5, 4]}
+  - {lower: [1, 1.5, -4], upper: [4, 2.5, 4]}
+  - {lower: [0, 1.5, -4], upper: [1, 2.5, 0.5]}
+  - {lower: [0, 1.5, 1.5], upper: [1, 2.5, 4]}
+  # Gate 2 (y 4.5..5.5): window radially IN and DOWN,     x -2.5..-1.5, z -1.5..-0.5
+  - {lower: [-5, 4.5, -4], upper: [-2.5, 5.5, 4]}
+  - {lower: [-1.5, 4.5, -4], upper: [4, 5.5, 4]}
+  - {lower: [-2.5, 4.5, -4], upper: [-1.5, 5.5, -1.5]}
+  - {lower: [-2.5, 4.5, -0.5], upper: [-1.5, 5.5, 4]}
+  # Gate 3 (y 7.5..8.5): window CENTRED radially and UP,  x -0.5..0.5,  z 0.5..1.5
+  - {lower: [-5, 7.5, -4], upper: [-0.5, 8.5, 4]}
+  - {lower: [0.5, 7.5, -4], upper: [4, 8.5, 4]}
+  - {lower: [-0.5, 7.5, -4], upper: [0.5, 8.5, 0.5]}
+  - {lower: [-0.5, 7.5, 1.5], upper: [0.5, 8.5, 4]}
+
+  u_trap:                                             # start inside a box with one open face, open towards -y
+  - {lower: [-1.5, 0.8, -1.5], upper: [1.5, 1.2, 1.5]}     # front wall: blocks the way to the goal
+  - {lower: [-1.5, -0.5, -1.5], upper: [-1.1, 1.2, 1.5]}   # side wall (-x)
+  - {lower: [1.1, -0.5, -1.5], upper: [1.5, 1.2, 1.5]}     # side wall (+x)
+  - {lower: [-1.5, -0.5, -1.5], upper: [1.5, 1.2, -1.1]}   # floor (-z)
+  - {lower: [-1.5, -0.5, 1.1], upper: [1.5, 1.2, 1.5]}     # roof (+z) -> only way out is backwards (y < -0.5)
+
+toggles:                                # defaults, overridable from the command line
+  scenario: multi_obstacle                # no_obstacle | one_obstacle | multi_obstacle | u_trap
+  multi_vehicle: false
+  plumes: false

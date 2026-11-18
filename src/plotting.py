@@ -92,6 +92,22 @@ def _box_faces(lower, upper):
     ]
 
 
+def _equal_cube_axes(ax):
+    """
+    Give all three axes the same length, centred on the data, so distances look the
+    same in every direction. A flat path (e.g. z = 0 everywhere) then still gets a
+    readable z axis instead of one squashed to zero height.
+    """
+    limits = [ax.get_xlim3d(), ax.get_ylim3d(), ax.get_zlim3d()]
+    centres = [(low + high) / 2 for low, high in limits]
+    half_size = max(high - low for low, high in limits) / 2
+
+    ax.set_xlim3d(centres[0] - half_size, centres[0] + half_size)
+    ax.set_ylim3d(centres[1] - half_size, centres[1] + half_size)
+    ax.set_zlim3d(centres[2] - half_size, centres[2] + half_size)
+    ax.set_box_aspect((1, 1, 1))
+
+
 def _title(result, cfg):
     return f"{cfg['scenario']}   |   total delta-v = {result['delta_v']:.3g} m/s"
 
@@ -206,7 +222,7 @@ def plot_3d(result, cfg, save_path=None, show=True):
     for j, obstacle in enumerate(cfg["obstacles"]):
         box = Poly3DCollection(_box_faces(obstacle["lower"], obstacle["upper"]),
                                facecolor=OBSTACLE_FILL, edgecolor=OBSTACLE_EDGE,
-                               linewidth=0.8, alpha=0.35,
+                               linewidth=0.6, alpha=0.12,      # very see-through: walls must not hide the path
                                label="Obstacle" if j == 0 else None)
         ax.add_collection3d(box)
 
@@ -244,7 +260,8 @@ def plot_3d(result, cfg, save_path=None, show=True):
     ax.set_ylabel(labels[1])
     ax.set_zlabel(labels[2])
     ax.set_title(_title(result, cfg))
-    ax.set_aspect("equal")
+    _equal_cube_axes(ax)
+    ax.view_init(elev=20, azim=-20)      # side-on to the in-track (y) motion; drag to rotate
     ax.legend(frameon=False, loc="upper left")
 
     _finish(fig, save_path, show)

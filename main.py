@@ -4,9 +4,13 @@ main.py - entry point.
 Usage (run from the repo root):
     python main.py                      # everything as set in config.yaml (toggles section)
     python main.py one_obstacle
+    python main.py one_obstacle --3d    # same scenario, 3-D config (config_3d.yaml)
     python main.py multi_obstacle --multi-vehicle --plumes
     python main.py no_obstacle --no-plot
     python main.py one_obstacle --config other_config.yaml
+
+2-D or 3-D: set USE_3D below (handy for the VS Code run button), or pass --3d.
+--config <file> overrides both.
 
 TODO:
     [x] argparse: optional positional scenario (no_obstacle | one_obstacle | multi_obstacle),
@@ -19,8 +23,15 @@ TODO:
 """
 
 import argparse
+from pathlib import Path
 
 from src import config, dynamics, model, plotting
+
+# ---- 2-D / 3-D toggle -------------------------------------------------------
+USE_3D = True                                           # True -> run config_3d.yaml by default
+
+CONFIG_2D = config.PATH                                   # config.yaml in the repo root
+CONFIG_3D = config.PATH.parent / "config_3d.yaml"
 
 
 def parse_args():
@@ -36,18 +47,30 @@ def parse_args():
                         help="use all vehicles in config.yaml (default: toggles.multi_vehicle)")
     parser.add_argument("--plumes", action="store_true", default=None,
                         help="add plume-impingement constraints (needs --multi-vehicle)")
-    parser.add_argument("--config", default=config.PATH,
-                        help="path to the config file (default: config.yaml in the repo root)")
+    parser.add_argument("--3d", dest="use_3d", action="store_true",
+                        help="use config_3d.yaml instead of config.yaml")
+    parser.add_argument("--config", default=None,
+                        help="path to any config file (overrides --3d and USE_3D)")
     parser.add_argument("--no-plot", action="store_true",
                         help="skip the plot")
 
     return parser.parse_args()
 
 
-def print_summary(cfg, result):
+def pick_config_path(args):
+    """Which config file to use: --config first, then --3d / USE_3D, else the 2-D config."""
+    if args.config is not None:
+        return args.config
+    if args.use_3d or USE_3D:
+        return CONFIG_3D
+    return CONFIG_2D
+
+
+def print_summary(cfg, result, config_path):
     """Print what was run and the key results."""
     print()
     print("=" * 50)
+    print(f"Config:            {Path(config_path).name}  ({cfg['general']['dims']}-D, {cfg['general']['dynamics']})")
     print(f"Scenario:          {cfg['scenario']}  ({len(cfg['obstacles'])} obstacle(s))")
     print(f"Vehicles:          {len(cfg['vehicles'])}")
     print(f"Vehicle avoidance: {cfg['vehicle_avoidance']}")
@@ -65,8 +88,9 @@ def print_summary(cfg, result):
 def main():
     args = parse_args()
 
-    # 1. Config: load config.yaml, apply the command-line toggles, check, resolve
-    cfg = config.get_config(args.config, args.scenario, args.multi_vehicle, args.plumes)
+    # 1. Config: pick the file (2-D or 3-D), apply the command-line toggles, check, resolve
+    config_path = pick_config_path(args)
+    cfg = config.get_config(config_path, args.scenario, args.multi_vehicle, args.plumes)
 
     # 2. Dynamics: discrete (Ad, Bd) for the chosen model
     Ad, Bd = dynamics.get_discrete_model(cfg)
@@ -75,7 +99,7 @@ def main():
     result = model.build_and_solve(cfg, Ad, Bd)
 
     # 4. Summary
-    print_summary(cfg, result)
+    print_summary(cfg, result, config_path)
 
     # 5. Plot
     if not args.no_plot:
