@@ -2,13 +2,13 @@
 model.py - build and solve the MILP (Richards 2002, Sec 2.2 base LP + Sec 2.3 avoidance).
 
 TODO - base LP:
-    [ ] Variables indexed by vehicle p, time step i, axis n (even when V = 1):
+    [x] Variables indexed by vehicle p, time step i, axis n (even when V = 1):
         x[p, i, :] states, u_plus[p, i, n] >= 0, u_minus[p, i, n] >= 0
         (u = u_plus - u_minus; the split is needed later for plumes)
-    [ ] Dynamics: x[i+1] = Ad x[i] + Bd u[i]
-    [ ] Boundary conditions: x[0] = start, x[T] = end
-    [ ] Bounds: |x| <= x_max, u_plus/u_minus <= u_max
-    [ ] Objective: minimise sum(u_plus + u_minus)  (fuel / 1-norm)
+    [x] Dynamics: x[i+1] = Ad x[i] + Bd u[i]
+    [x] Boundary conditions: x[0] = start, x[T] = end
+    [x] Bounds: |x| <= x_max, u_plus/u_minus <= u_max
+    [x] Objective: minimise sum(u_plus + u_minus)  (fuel / 1-norm)
 #THIS TODO IS PG 26 IN ARTICLE
     
 TODO - obstacles (Sec 2.3.1):
@@ -38,3 +38,69 @@ import time
 import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
+
+
+
+# Base LP: fuel-optimal trajectory, no avoidance
+#
+# Index letters (used in general):
+#   p  vehicle            0 .. V-1
+#   i  time step          0 .. T   (states),  0 .. T-1 (thrusts)
+#   k  state component    0 .. 2*dims-1   e.g. 2-D: [x, y, vx, vy]
+#   j  state component, used as the column of Ad
+#   n  thrust axis        0 .. dims-1
+
+def add_base_lp(model, cfg, Ad, Bd):
+    """
+    Add the base fuel-optimal LP to `model`.
+
+    Returns the variables so later steps (obstacles, solve) can use them:
+        x[p, i, k]        state of vehicle p at time step i
+        u_plus[p, i, n]   positive part of the thrust  (u = u_plus - u_minus)
+        u_minus[p, i, n]  negative part of the thrust
+    """
+    #retrieve the data from the cfg
+    general = cfg["general"]
+    vehicles = cfg["vehicles"]
+
+    V = len(vehicles)
+    T = general["T"]
+    dims = general["dims"]
+    n_states = 2 * dims
+    x_max = general["x_max"]
+    u_max = general["u_max"]
+
+    #VARIABLES AND BOUNDS
+    # States: each component k has its own limit, so add them one by one.
+    # Note: Gurobi's default lower bound is 0, so lb must be set explicitly.
+    x = {}
+    for p in range(V):
+        for i in range(T + 1):
+            for k in range(n_states):
+                x[p, i, k] = model.addVar(lb=-x_max[k], ub=x_max[k], name=f"x[{p},{i},{k}]")
+
+    # Thrusts: split u = u_plus - u_minus with both >= 0, so |u| = u_plus + u_minus
+    # we dont want the solver to fires both at once, as it wastes fuel
+    u_plus = model.addVars(V, T, dims, lb=0.0, ub=u_max, name="u_plus")
+    u_minus = model.addVars(V, T, dims, lb=0.0, ub=u_max, name="u_minus")
+
+    #Boundary conditions eq 1 and 2 from paper
+    for p, vehicle in enumerate(vehicles):
+        for k in range(n_states):
+            model.addConstr(x[p, 0, k] == vehicle["start"][k], name=f"start[{p},{k}]")
+            model.addConstr(x[p, T, k] == vehicle["end"][k], name=f"end[{p},{k}]")
+
+    #Dynamics eq 3: x[i+1] = Ad x[i] + Bd u[i] (does it row by row)
+    for p in range(V):
+        for i in range(T):
+            for k in range(n_states):
+                drift = gp.quicksum(float(Ad[k, j]) * x[p, i, j] for j in range(n_states))
+                thrust = gp.quicksum(float(Bd[k, n]) * (u_plus[p, i, n] - u_minus[p, i, n])
+                                     for n in range(dims))
+                model.addConstr(x[p, i + 1, k] == drift + thrust, name=f"dyn[{p},{i},{k}]")
+
+    #Objective eq 7 and 8 -> MINIMIZE TOTAL FUEL -> sum of |u|
+    model.setObjective(u_plus.sum() + u_minus.sum(), GRB.MINIMIZE)
+
+    return x, u_plus, u_minus
+
