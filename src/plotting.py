@@ -31,6 +31,10 @@ OBSTACLE_FILL = "#c9c8c1"
 OBSTACLE_EDGE = "#6b6a63"
 GRID_COLOR = "#e4e3dd"
 
+# Thrust arrows: one colour for all vehicles, slightly see-through so the path shows
+THRUST_COLOR = "#e34948"
+THRUST_ALPHA = 0.6
+
 # Arrows are drawn when the thrust is above this fraction of u_max
 FIRING_THRESHOLD = 1e-3
 
@@ -153,15 +157,21 @@ def plot_2d(result, cfg, save_path=None, show=True):
                 markeredgecolor="white", markeredgewidth=1.5,
                 label="End" if p == 0 else None)
 
-        # Thrust arrows: drawn at the step where the thrust starts acting,
-        # pointing in the thrust direction, length proportional to |u|
+        # Thrust arrows: the arrow tip sits on the dot of the step where the thrust
+        # starts acting, pointing in the thrust direction, length proportional to |u|
         fired = _firing_steps(U[p], u_max)
         if len(fired) > 0:
             ax.quiver(pos_x[fired], pos_y[fired],
                       U[p, fired, 0] * length_per_newton, U[p, fired, 1] * length_per_newton,
-                      angles="xy", scale_units="xy", scale=1,
-                      color=color, width=0.004,
+                      angles="xy", scale_units="xy", scale=1, pivot="tip",
+                      color=THRUST_COLOR, alpha=THRUST_ALPHA, width=0.004,
                       label="Thrust" if p == 0 else None)
+
+            # Arrows don't widen the axes by themselves, so add their tails to the view
+            tail_x = pos_x[fired] - U[p, fired, 0] * length_per_newton
+            tail_y = pos_y[fired] - U[p, fired, 1] * length_per_newton
+            ax.update_datalim(np.column_stack([tail_x, tail_y]))
+            ax.autoscale_view()
 
     # ---- Axes ---------------------------------------------------------------
     labels = _axis_labels(cfg)
@@ -220,8 +230,13 @@ def plot_3d(result, cfg, save_path=None, show=True):
             arrows = U[p, fired, :] * length_per_newton
             ax.quiver(pos[fired, 0], pos[fired, 1], pos[fired, 2],
                       arrows[:, 0], arrows[:, 1], arrows[:, 2],
-                      color=color, linewidth=1.2, arrow_length_ratio=0.3,
+                      pivot="tip", color=THRUST_COLOR, alpha=THRUST_ALPHA,
+                      linewidth=1.2, arrow_length_ratio=0.3,
                       label="Thrust" if p == 0 else None)
+
+            # Arrows don't widen the axes by themselves, so add their tails to the view
+            tails = pos[fired] - arrows
+            ax.auto_scale_xyz(tails[:, 0], tails[:, 1], tails[:, 2], had_data=True)
 
     # ---- Axes ---------------------------------------------------------------
     labels = _axis_labels(cfg)

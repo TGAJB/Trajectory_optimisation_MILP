@@ -30,7 +30,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="MILP trajectory optimisation (Richards 2002, Sec 2.3)")
 
     parser.add_argument("scenario", nargs="?", default=None,
-                        choices=["no_obstacle", "one_obstacle", "multi_obstacle"],
+                        choices=["no_obstacle", "one_obstacle", "multi_obstacle", "u_trap"],
                         help="which obstacle scenario to run (default: toggles.scenario in config.yaml)")
     parser.add_argument("--multi-vehicle", action="store_true", default=None,
                         help="use all vehicles in config.yaml (default: toggles.multi_vehicle)")

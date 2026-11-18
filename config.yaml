@@ -43,9 +43,17 @@ scenarios:                        # each obstacle: {lower: [...], upper: [...]}
   no_obstacle: []
   one_obstacle: 
   - {lower: [2,-1], upper: [4,1]} # '-' starts a list item and we write bottom left and top right corner
-  multi_obstacle: []
+  multi_obstacle:
+  - {lower: [2, -1], upper: [4, 1]}        # A: blocks the straight line (same box as one_obstacle)
+  - {lower: [5.5, -3], upper: [6.5, -0.5]} # B: below the line, blocks a wide detour under A
+  - {lower: [5.5, 0.5], upper: [6.5, 3]}   # C: above the line, B and C leave a 1 m gap around y = 0
+  u_trap:                                  # start inside a U-shaped cup that opens towards -x:
+  - {lower: [0.8, -1.5], upper: [1.2, 1.5]}    # front wall: blocks the way to the goal
+  - {lower: [-0.5, 1.1], upper: [1.2, 1.5]}    # top wall
+  - {lower: [-0.5, -1.5], upper: [1.2, -1.1]}  # bottom wall -> only way out is backwards (x < -0.5)
+  # (a bigger cup is infeasible: with 1 mN on 5 kg there is not enough time in 600 s)
 
 toggles:                          # defaults, overridable from the command line
-  scenario: one_obstacle         # no_obstacle | one_obstacle | multi_obstacle
+  scenario: u_trap        # no_obstacle | one_obstacle | multi_obstacle | u_trap
   multi_vehicle: false
   plumes: false                   # ignored (with warning) if multi_vehicle is false
