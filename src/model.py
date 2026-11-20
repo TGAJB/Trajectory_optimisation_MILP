@@ -20,10 +20,14 @@ TODO - obstacles (Sec 2.3.1):
     [x] add_obstacles(...): call outside_box for every vehicle, obstacle (inflated
         by obstacle_margin), and time step i = 1..T-1
 
-TODO - later (stop with NotImplementedError until done):
-    [ ] add_vehicle_avoidance(...): outside_box on x_p - x_q with box = +/- r, pairs q > p
-    [ ] add_plumes(...): outside_box plus an extra "not firing" option
-        (u_plus <= M c for forward thrusters, u_minus <= M c for reverse), 2N+1 binaries
+TODO - vehicle avoidance (Sec 2.3):
+    [x] add_vehicle_avoidance(...): outside_box on x_p - x_q with box = +/- r, pairs q > p
+
+TODO - plumes (Sec 2.3):
+    [x] plume_box(...): plume of one thruster as a box relative to the firing vehicle
+    [x] outside_plume(...): outside_box plus an extra "not firing" option
+        (u_plus <= u_max c for forward thrusters, u_minus <= u_max c for reverse), 2N+1 binaries
+    [x] add_plumes(...): every ordered pair p != q, steps 0..T-1, all 2N thrusters
 
 TODO - solve:
     [x] build_and_solve(cfg, Ad, Bd): base LP -> obstacles -> (vehicles) -> (plumes)
@@ -110,7 +114,7 @@ def outside_box(model, point, lower, upper, M, name):
     Force `point` to lie outside the box [lower, upper] (Richards eq. 12), using big-M.
 
     point  list of N Gurobi variables/expressions, one per axis
-           (later, for vehicle avoidance, this will be x_p - x_q)
+           (a position for obstacles, the separation x_p - x_q for vehicle avoidance)
     lower  N numbers, the box corner with the smallest coordinates
     upper  N numbers, the box corner with the largest coordinates
 
@@ -165,11 +169,124 @@ def add_obstacles(model, cfg, x):
 
 
 def add_vehicle_avoidance(model, cfg, x):
-    raise NotImplementedError("Vehicle avoidance is not built yet (multi_vehicle)")
+    """
+    Keep every pair of vehicles at least safety_distance apart (Richards eq. 15).
+
+    Same idea as an obstacle, but the box moves with the other vehicle: the
+    separation x_p - x_q must lie outside the box [-r, +r], i.e. on at least one
+    axis the two vehicles are at least r_n apart.
+
+    Each pair is constrained once (q > p): p-q and q-p would be the same constraint.
+    Only steps 1..T-1, as for obstacles; config.py checks the start and end positions.
+    """
+    general = cfg["general"]
+    V = len(cfg["vehicles"])
+    T = general["T"]
+    dims = general["dims"]
+    M = general["big_M"]
+    r = cfg["safety_distance"]
+
+    # Box of half-size r centred on zero separation
+    lower = [-r[n] for n in range(dims)]
+    upper = [r[n] for n in range(dims)]
+
+    for p in range(V):
+        for q in range(p + 1, V):
+            for i in range(1, T):
+                # Position of p relative to q at step i (a Gurobi expression per axis)
+                separation = [x[p, i, n] - x[q, i, n] for n in range(dims)]
+                outside_box(model, separation, lower, upper, M, name=f"veh[{p},{q},{i}]")
+
+
+def plume_box(n, sign, length, half_width, dims):
+    """
+    Plume of one thruster, as a box relative to the vehicle that fires it.
+
+    n     axis of the thruster
+    sign  +1 for thrust in +n (u_plus): the exhaust goes out towards -n
+          -1 for thrust in -n (u_minus): the exhaust goes out towards +n
+    The box is `length` long in the exhaust direction, starting at the vehicle,
+    and +-half_width wide on every other axis.
+
+    Returns (lower, upper) relative to the firing vehicle.
+    """
+    lower = [-half_width] * dims
+    upper = [half_width] * dims
+
+    if sign > 0:
+        lower[n] = -length
+        upper[n] = 0.0
+    else:
+        lower[n] = 0.0
+        upper[n] = length
+
+    return lower, upper
+
+
+def outside_plume(model, point, lower, upper, thrust, u_max, M, name):
+    """
+    Same as outside_box, plus one extra way to satisfy it: the thruster is off
+    (Richards eqs. 18-19).
+
+    point   position of the other vehicle relative to the firing one
+    thrust  the thruster's variable (u_plus or u_minus of one axis), >= 0
+
+    2N + 1 binaries: the 2N box sides, and c for "not firing":
+        thrust <= u_max * c        c = 0 forces the thruster off
+    At most 2N of the 2N+1 may be switched off, so the other vehicle is outside
+    the plume OR the thruster does not fire.
+    """
+    N = len(point)
+    a = model.addVars(2 * N + 1, vtype=GRB.BINARY, name=name)
+
+    for n in range(N):
+        model.addConstr(point[n] >= upper[n] - M * a[n], name=f"{name}_above[{n}]")
+        model.addConstr(point[n] <= lower[n] + M * a[n + N], name=f"{name}_below[{n}]")
+
+    # Extra option: not firing. u_max is a big enough "M" here, the thrust never exceeds it
+    model.addConstr(thrust <= u_max * a[2 * N], name=f"{name}_off")
+
+    model.addConstr(a.sum() <= 2 * N, name=f"{name}_one_option")
+
+    return a
 
 
 def add_plumes(model, cfg, x, u_plus, u_minus):
-    raise NotImplementedError("Plume avoidance is not built yet (plumes)")
+    """
+    No vehicle may fire a thruster whose plume would hit another vehicle (Richards Sec 2.3).
+
+    Unlike vehicle avoidance, the pairs are ORDERED: p firing at q is not the same as
+    q firing at p, so every p != q is constrained.
+    Thrust u[i] is applied from step i to i+1, so steps 0..T-1 are checked, using the
+    positions at step i (same between-step caveat as obstacles).
+    """
+    general = cfg["general"]
+    V = len(cfg["vehicles"])
+    T = general["T"]
+    dims = general["dims"]
+    M = general["big_M"]
+    u_max = general["u_max"]
+    length = cfg["plume"]["length"]
+    half_width = cfg["plume"]["half_width"]
+
+    for p in range(V):                  # vehicle that fires
+        for q in range(V):              # vehicle that must not be hit
+            if q == p:
+                continue
+
+            for i in range(T):
+                # Position of q relative to p at step i
+                separation = [x[q, i, n] - x[p, i, n] for n in range(dims)]
+
+                for n in range(dims):
+                    # Two thrusters per axis: +n (u_plus) and -n (u_minus)
+                    thrusters = [(u_plus[p, i, n], +1, "plus"),
+                                 (u_minus[p, i, n], -1, "minus")]
+
+                    for thrust, sign, label in thrusters:
+                        lower, upper = plume_box(n, sign, length, half_width, dims)
+                        outside_plume(model, separation, lower, upper, thrust, u_max, M,
+                                      name=f"plume[{p},{q},{i},{n},{label}]")
 
 
 #SOLVER

@@ -19,8 +19,9 @@ TODO:
         - start/end positions lie outside every inflated obstacle
         - toggles are true/false, multi_vehicle requires at least 2 vehicles
     [x] Return one resolved config object for model.py / plotting.py
-    [ ] Later: check vehicle_avoidance.safety_distance and plume.length/half_width
-        once the vehicle and plume constraints exist
+    [x] vehicle_avoidance.safety_distance: one positive value per axis, and no two
+        vehicles start or end closer than it (only checked with multi_vehicle on)
+    [x] plume.length / half_width positive (only checked with plumes and multi_vehicle on)
 
 Usage:
     from src.config import get_config
@@ -174,6 +175,47 @@ def _check_toggles(toggles, vehicles):
         raise ValueError("multi_vehicle is on, but config.yaml defines fewer than 2 vehicles")
 
 
+def _check_vehicle_avoidance(safety_distance, vehicles, general, toggles):
+    """
+    Check safety_distance (only when multi_vehicle is on, otherwise it is not used),
+    and that no two vehicles start or end closer than it.
+    """
+    if not toggles["multi_vehicle"]:
+        return
+
+    dims = general["dims"]
+
+    # Extra values would be silently ignored, a zero or negative r gives no avoidance
+    if len(safety_distance) != dims:
+        raise ValueError(f"vehicle_avoidance.safety_distance must have {dims} values, "
+                         f"got {safety_distance!r}")
+    for value in safety_distance:
+        if value <= 0:
+            raise ValueError(f"vehicle_avoidance.safety_distance values must all be positive, "
+                             f"got {safety_distance!r}")
+
+    # Avoidance is only enforced from step 1 to T-1, so start/end clashes would not be caught
+    lower = [-r for r in safety_distance]
+    for key in ("start", "end"):
+        for p in range(len(vehicles)):
+            for q in range(p + 1, len(vehicles)):
+                separation = [vehicles[p][key][n] - vehicles[q][key][n] for n in range(dims)]
+                if _is_inside(separation, lower, safety_distance, 0.0):
+                    raise ValueError(f"{vehicles[p].get('name', p)} and {vehicles[q].get('name', q)} "
+                                     f"{key} closer than safety_distance {safety_distance}")
+
+
+def _check_plume(plume, toggles):
+    """Check the plume size (only when plumes are actually used)."""
+    if not (toggles["plumes"] and toggles["multi_vehicle"]):
+        return
+
+    # A zero or negative size gives an empty plume box, i.e. silently no plume constraint
+    for key in ("length", "half_width"):
+        if plume[key] <= 0:
+            raise ValueError(f"plume.{key} must be positive, got {plume[key]!r}")
+
+
 def validate(cfg):
     """Raise ValueError on the first problem found. Returns nothing if all is fine."""
     general = cfg["general"]
@@ -184,6 +226,9 @@ def validate(cfg):
     _check_vehicles(vehicles, general)
     _check_obstacles(cfg["scenarios"], vehicles, general)
     _check_toggles(cfg["toggles"], vehicles)
+    _check_vehicle_avoidance(cfg["vehicle_avoidance"]["safety_distance"], vehicles,
+                             general, cfg["toggles"])
+    _check_plume(cfg["plume"], cfg["toggles"])
 
 
 # =============================================================================

@@ -8,8 +8,11 @@ Usage (run from the repo root):
     python main.py multi_obstacle --multi-vehicle --plumes
     python main.py no_obstacle --no-plot
     python main.py one_obstacle --config other_config.yaml
+    python main.py no_obstacle --multi-vehicle --plumes --animate
+    python main.py no_obstacle --multi-vehicle --plumes --gif results/plumes.gif
 
 2-D or 3-D: set USE_3D below (handy for the VS Code run button), or pass --3d.
+Animation: set ANIMATE (and optionally GIF_PATH) below, or pass --animate / --gif PATH.
 --config <file> overrides both.
 
 TODO:
@@ -20,6 +23,7 @@ TODO:
     [x] Build and solve the MILP (src.model)
     [x] Print a summary: scenario, toggles, fuel used, solve time, binary count
     [x] Plot the result (src.plotting)  -> needs plot_2d / plot_3d in plotting.py
+    [x] --animate / --gif: vehicles moving, with safety boxes and plumes
 """
 
 import argparse
@@ -28,10 +32,14 @@ from pathlib import Path
 from src import config, dynamics, model, plotting
 
 # ---- 2-D / 3-D toggle -------------------------------------------------------
-USE_3D = True                                           # True -> run config_3d.yaml by default
+USE_3D = False                                           # True -> run config_3d.yaml by default
 
 CONFIG_2D = config.PATH                                   # config.yaml in the repo root
 CONFIG_3D = config.PATH.parent / "config_3d.yaml"
+
+# ---- Animation toggle -------------------------------------------------------
+ANIMATE = True                # True -> show the animation after the static plot (or pass --animate)
+GIF_PATH = None                 # e.g. "results/run.gif" -> also save it (or pass --gif PATH)
 
 
 def parse_args():
@@ -52,7 +60,11 @@ def parse_args():
     parser.add_argument("--config", default=None,
                         help="path to any config file (overrides --3d and USE_3D)")
     parser.add_argument("--no-plot", action="store_true",
-                        help="skip the plot")
+                        help="skip the plot (and the animation)")
+    parser.add_argument("--animate", action="store_true",
+                        help="after the static plot, show the vehicles moving (safety boxes, plumes)")
+    parser.add_argument("--gif", default=None, metavar="PATH",
+                        help="save the animation as a .gif, e.g. results/run.gif (implies --animate)")
 
     return parser.parse_args()
 
@@ -107,6 +119,14 @@ def main():
             plotting.plot_2d(result, cfg)
         else:
             plotting.plot_3d(result, cfg)
+
+    # 6. Animation (opens after the static plot window is closed)
+    #    The command line wins over the constants at the top of this file
+    gif_path = args.gif if args.gif is not None else GIF_PATH
+    animate = args.animate or ANIMATE or gif_path is not None
+
+    if not args.no_plot and animate:
+        plotting.animate(result, cfg, save_path=gif_path)
 
 
 if __name__ == "__main__":

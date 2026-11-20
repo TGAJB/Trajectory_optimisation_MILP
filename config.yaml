@@ -30,14 +30,21 @@ general:
 vehicles:                         # state = [positions..., velocities...]
   - name: v1
     start: [0,0,0,0] #[x,y,vx,vy]
-    end: [10,0,0,0] 
+    end: [10,0,0,0]
+  # Extra vehicles (multi_vehicle only)
+  - name: v2                      # convoy: follows 2 m behind v1, so v1's acceleration burn
+    start: [-2, 0, 0, 0]          # blows straight at v2 and v2's braking burn blows at v1
+    end:   [8, 0, 0, 0]           # -> this is the pair that makes the plume constraints matter
+  - name: v3                      # bottom to top at x = 5, through the gap between the obstacles
+    start: [5, -4, 0, 0]
+    end:   [5, 4, 0, 0]
 
 vehicle_avoidance:                # used only when multi_vehicle is true
-  safety_distance: []             # r_n per axis
+  safety_distance: [1, 1]         # r_n per axis: vehicles stay >= 1 m apart in x OR in y
 
-plume:                            # used only when plumes is true
-  length: null                    # P
-  half_width: null                # W
+plume:                            # constraints only when plumes is true (the animation always draws it)
+  length: 3.0                     # P: how far the exhaust reaches behind a thruster [m]
+  half_width: 0.5                 # W: half the plume width [m]   (big_M must stay > 40 + P)
 
 scenarios:                        # each obstacle: {lower: [...], upper: [...]}
   no_obstacle: []
@@ -54,6 +61,6 @@ scenarios:                        # each obstacle: {lower: [...], upper: [...]}
   # (a bigger cup is infeasible: with 1 mN on 5 kg there is not enough time in 600 s)
 
 toggles:                          # defaults, overridable from the command line
-  scenario: u_trap        # no_obstacle | one_obstacle | multi_obstacle | u_trap
-  multi_vehicle: false
-  plumes: false                   # ignored (with warning) if multi_vehicle is false
+  scenario: multi_obstacle        # no_obstacle | one_obstacle | multi_obstacle | u_trap
+  multi_vehicle: True
+  plumes: True                   # ignored (with warning) if multi_vehicle is false

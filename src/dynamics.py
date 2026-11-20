@@ -10,6 +10,7 @@ TODO:
     [x] discretise_zoh(A, B, dt): exact ZOH via the matrix exponential of
         the augmented matrix [[A, B], [0, 0]] * dt -> (Ad, Bd)
     [x] get_discrete_model(cfg): pick the model from config and return (Ad, Bd)
+        (get_continuous_model(cfg) gives the (A, B) it starts from)
 """
 
 import numpy as np
@@ -72,11 +73,11 @@ def discretise_zoh(A, B, dt):
     Bd = E[:n,n:]
     return Ad,Bd #discretized blocks
 
-def get_discrete_model(cfg):
+def get_continuous_model(cfg):
+    """Continuous (A, B) for the model chosen in the config (also used by the animation)."""
     general = cfg["general"]
     dims = general["dims"]
     mass = general["mass"]
-    dt = general["dt"]
 
     if general["dynamics"] == "double_integrator":
         A, B = double_integrator(dims, mass)
@@ -87,6 +88,12 @@ def get_discrete_model(cfg):
         # carrying on with no model
         raise ValueError(f"Unknown dynamics {general['dynamics']!r}")
 
-    Ad, Bd = discretise_zoh(A, B, dt)
+    return A, B
+
+
+def get_discrete_model(cfg):
+    """Discrete (Ad, Bd) for one time step dt."""
+    A, B = get_continuous_model(cfg)
+    Ad, Bd = discretise_zoh(A, B, cfg["general"]["dt"])
     return Ad, Bd
 

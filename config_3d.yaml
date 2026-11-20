@@ -29,13 +29,23 @@ vehicles:                               # state = [x, y, z, vx, vy, vz]
   - name: v1
     start: [0, 0, 0, 0, 0, 0]
     end:   [0, 10, 0, 0, 0, 0]
+  # Extra vehicles (multi_vehicle only). All starts/ends lie in free space in every
+  # scenario (y = 3.5 and y = 7 are the corridors between the gates of multi_obstacle).
+  # (A vehicle flying y 10 -> 0 head-on through the gates while v1 comes the other way
+  # found no feasible solution.)
+  - name: v2                            # convoy: follows 2 m behind v1 in-track, so v1's
+    start: [0, -2, 0, 0, 0, 0]          # acceleration burn blows at v2 and v2's braking burn
+    end:   [0, 7, 0, 0, 0, 0]           # blows at v1 -> the pair that makes plumes matter
+  - name: v3                            # up (z -3 -> +3) at y = 3.5, between gates 1 and 2
+    start: [-1.5, 3.5, -3, 0, 0, 0]
+    end:   [-1.5, 3.5, 3, 0, 0, 0]
 
 vehicle_avoidance:                      # used only when multi_vehicle is true
-  safety_distance: []                   # r_n per axis
+  safety_distance: [1, 1, 1]            # r_n per axis: >= 1 m apart in x OR y OR z
 
-plume:                                  # used only when plumes is true
-  length: null                          # P
-  half_width: null                      # W
+plume:                                  # constraints only when plumes is true (the animation always draws it)
+  length: 3.0                           # P: how far the exhaust reaches behind a thruster [m]
+  half_width: 0.5                       # W: half the plume width [m]   (big_M must stay > 40 + P)
 
 # Note: without obstacles the fuel-optimal in-track move is NOT a straight line. It dips
 # radially to x = -1.5 m (dropping slightly into a lower, faster orbit), so the boxes
@@ -78,5 +88,5 @@ scenarios:                              # each obstacle: {lower: [x, y, z], uppe
 
 toggles:                                # defaults, overridable from the command line
   scenario: multi_obstacle                # no_obstacle | one_obstacle | multi_obstacle | u_trap
-  multi_vehicle: false
+  multi_vehicle: True
   plumes: false
